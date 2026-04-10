@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Management System - Cassandra</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f0f2f5; }
+        .header-section {
+            background: linear-gradient(135deg, #1a73e8 0%, #0d47a1 100%);
+            color: white; padding: 30px 0; margin-bottom: 30px;
+        }
+        .card { border: none; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); margin-bottom: 24px; }
+        .card-header { border-radius: 12px 12px 0 0 !important; font-weight: 600; }
+        .table th { background-color: #e8eaf6; }
+        .nosql-info {
+            background: linear-gradient(135deg, #e8f5e9, #c8e6c9);
+            border-left: 4px solid #4caf50; padding: 15px; border-radius: 8px; margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="header-section text-center">
+    <div class="container">
+        <h1>🎓 Student Management System</h1>
+        <p class="mb-0">
+            <span class="badge bg-light text-dark fs-6">Apache Cassandra (Column-Family NoSQL)</span>
+            <span class="badge bg-warning text-dark fs-6 ms-2">Docker Container</span>
+        </p>
+    </div>
+</div>
+
+<div class="container">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <div class="nosql-info">
+        <h5>📚 Column-Family Database คืออะไร?</h5>
+        <p class="mb-0">
+            <strong>Column-Family Database</strong> เก็บข้อมูลเป็นกลุ่มของคอลัมน์
+            แต่ละแถวสามารถมีคอลัมน์ไม่เท่ากันได้ เหมาะกับข้อมูลขนาดใหญ่
+            ที่ต้องการ <strong>เขียนเร็ว</strong> และ <strong>กระจายข้อมูล</strong> ข้ามหลายเครื่อง
+        </p>
+    </div>
+
+    <div class="row">
+
+        <!-- ฟอร์มเพิ่ม (CREATE) -->
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header bg-success text-white">📝 เพิ่มนักศึกษา (CREATE)</div>
+                <div class="card-body">
+                    <form action="/create" method="POST">
+                        <div class="mb-2">
+                            <label class="form-label fw-bold">รหัสนักศึกษา</label>
+                            <input type="text" class="form-control" name="student_id" placeholder="เช่น 6501001" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label fw-bold">ชื่อ</label>
+                            <input type="text" class="form-control" name="first_name" placeholder="เช่น สมชาย" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label fw-bold">นามสกุล</label>
+                            <input type="text" class="form-control" name="last_name" placeholder="เช่น ใจดี" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label fw-bold">อีเมล</label>
+                            <input type="email" class="form-control" name="email" placeholder="เช่น somchai@uni.ac.th" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label fw-bold">ภาควิชา</label>
+                            <select class="form-select" name="department" required>
+                                <option value="">-- เลือก --</option>
+                                <option value="วิทยาการคอมพิวเตอร์">วิทยาการคอมพิวเตอร์</option>
+                                <option value="วิศวกรรมซอฟต์แวร์">วิศวกรรมซอฟต์แวร์</option>
+                                <option value="เทคโนโลยีสารสนเทศ">เทคโนโลยีสารสนเทศ</option>
+                                <option value="วิทยาการข้อมูล">วิทยาการข้อมูล</option>
+                            </select>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label fw-bold">GPA</label>
+                            <input type="number" class="form-control" name="gpa" step="0.01" min="0" max="4" placeholder="3.25" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">ชั้นปี</label>
+                            <select class="form-select" name="year" required>
+                                <option value="1">ปี 1</option>
+                                <option value="2">ปี 2</option>
+                                <option value="3">ปี 3</option>
+                                <option value="4">ปี 4</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-success w-100">➕ เพิ่มนักศึกษา</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- ตาราง (READ) + UPDATE + DELETE -->
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header bg-primary text-white d-flex justify-content-between">
+                    <span>📋 รายชื่อนักศึกษา (READ)</span>
+                    <span class="badge bg-light text-dark">ทั้งหมด {{ students|length }} คน</span>
+                </div>
+                <div class="card-body">
+                    {% if students %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>รหัส</th>
+                                    <th>ชื่อ-นามสกุล</th>
+                                    <th>อีเมล</th>
+                                    <th>ภาควิชา</th>
+                                    <th>GPA</th>
+                                    <th>ปี</th>
+                                    <th>จัดการ</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for s in students %}
+                                <tr>
+                                    <td><strong>{{ s.student_id }}</strong></td>
+                                    <td>{{ s.first_name }} {{ s.last_name }}</td>
+                                    <td><small>{{ s.email }}</small></td>
+                                    <td><span class="badge bg-info">{{ s.department }}</span></td>
+                                    <td>
+                                        {% if s.gpa >= 3.5 %}
+                                            <span class="badge bg-success">{{ "%.2f"|format(s.gpa) }}</span>
+                                        {% elif s.gpa >= 3.0 %}
+                                            <span class="badge bg-primary">{{ "%.2f"|format(s.gpa) }}</span>
+                                        {% else %}
+                                            <span class="badge bg-warning text-dark">{{ "%.2f"|format(s.gpa) }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ s.year }}</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-warning"
+                                            onclick="fillEdit('{{ s.student_id }}','{{ s.first_name }}','{{ s.last_name }}','{{ s.email }}','{{ s.department }}','{{ s.gpa }}','{{ s.year }}')">✏️</button>
+                                        <a href="/delete/{{ s.student_id }}" class="btn btn-sm btn-outline-danger"
+                                           onclick="return confirm('ยืนยันลบ {{ s.first_name }}?')">🗑️</a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-4">
+                        <h4>📭 ยังไม่มีข้อมูล</h4>
+                        <p class="text-muted">เพิ่มนักศึกษาจากฟอร์มด้านซ้าย</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- ฟอร์มแก้ไข (UPDATE) -->
+            <div class="card" id="editCard" style="display:none;">
+                <div class="card-header bg-warning text-dark">✏️ แก้ไขข้อมูล (UPDATE)</div>
+                <div class="card-body">
+                    <form action="/update" method="POST">
+                        <input type="hidden" name="student_id" id="edit_id">
+                        <div class="row">
+                            <div class="col-md-3 mb-2">
+                                <label class="form-label fw-bold">รหัส</label>
+                                <input type="text" class="form-control" id="edit_id_show" disabled>
+                            </div>
+                            <div class="col-md-3 mb-2">
+                                <label class="form-label fw-bold">ชื่อ</label>
+                                <input type="text" class="form-control" name="first_name" id="edit_fn" required>
+                            </div>
+                            <div class="col-md-3 mb-2">
+                                <label class="form-label fw-bold">นามสกุล</label>
+                                <input type="text" class="form-control" name="last_name" id="edit_ln" required>
+                            </div>
+                            <div class="col-md-3 mb-2">
+                                <label class="form-label fw-bold">อีเมล</label>
+                                <input type="email" class="form-control" name="email" id="edit_email" required>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4 mb-2">
+                                <label class="form-label fw-bold">ภาควิชา</label>
+                                <select class="form-select" name="department" id="edit_dept" required>
+                                    <option value="วิทยาการคอมพิวเตอร์">วิทยาการคอมพิวเตอร์</option>
+                                    <option value="วิศวกรรมซอฟต์แวร์">วิศวกรรมซอฟต์แวร์</option>
+                                    <option value="เทคโนโลยีสารสนเทศ">เทคโนโลยีสารสนเทศ</option>
+                                    <option value="วิทยาการข้อมูล">วิทยาการข้อมูล</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2 mb-2">
+                                <label class="form-label fw-bold">GPA</label>
+                                <input type="number" class="form-control" name="gpa" id="edit_gpa" step="0.01" min="0" max="4" required>
+                            </div>
+                            <div class="col-md-2 mb-2">
+                                <label class="form-label fw-bold">ชั้นปี</label>
+                                <select class="form-select" name="year" id="edit_year" required>
+                                    <option value="1">1</option><option value="2">2</option>
+                                    <option value="3">3</option><option value="4">4</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4 mb-2 d-flex align-items-end gap-2">
+                                <button type="submit" class="btn btn-warning flex-fill">💾 บันทึก</button>
+                                <button type="button" class="btn btn-secondary" onclick="document.getElementById('editCard').style.display='none'">✖ ยกเลิก</button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="text-center py-4 text-muted">
+        <p>Capstone Project 2: NoSQL | Column-Family (Apache Cassandra) | Docker</p>
+    </footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+function fillEdit(id, fn, ln, email, dept, gpa, year) {
+    document.getElementById('editCard').style.display = 'block';
+    document.getElementById('edit_id').value = id;
+    document.getElementById('edit_id_show').value = id;
+    document.getElementById('edit_fn').value = fn;
+    document.getElementById('edit_ln').value = ln;
+    document.getElementById('edit_email').value = email;
+    document.getElementById('edit_dept').value = dept;
+    document.getElementById('edit_gpa').value = gpa;
+    document.getElementById('edit_year').value = year;
+    document.getElementById('editCard').scrollIntoView({behavior:'smooth'});
+}
+</script>
+</body>
+</html>
