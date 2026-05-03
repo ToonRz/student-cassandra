@@ -71,7 +71,27 @@ def init_database():
 def index():
     try:
         _, db_session = get_db()
-        rows = db_session.execute("SELECT * FROM students")
+        
+        search_query = request.args.get('search', '').strip()
+        
+        # เริ่มจับเวลา
+        start_time = time.time()
+        
+        if search_query:
+            # ค้นหาด้วย student_id (ถ้าเป็นตัวเลขหรือรหัสตรงตัว)
+            # ใน Cassandra การค้นหาหลายฟิลด์พร้อมกันโดยไม่ใช่ PK ต้องใช้ ALLOW FILTERING
+            query = "SELECT * FROM students WHERE student_id = ? ALLOW FILTERING"
+            rows = db_session.execute(db_session.prepare(query), [search_query])
+            
+            # ถ้าหาด้วย ID ไม่เจอ ให้ลองหาด้วยชื่อ (แบบ Case-insensitive นิดหน่อยด้วยการดึงมาเช็ค)
+            # หมายเหตุ: ใน Cassandra การค้นหาแบบ LIKE จะทำได้ยากถ้าไม่ได้ทำ Custom Index
+            if not rows:
+                query = "SELECT * FROM students WHERE first_name = ? ALLOW FILTERING"
+                rows = db_session.execute(db_session.prepare(query), [search_query])
+        else:
+            # ดึงข้อมูล 10,000 รายการปกติ
+            rows = db_session.execute("SELECT * FROM students LIMIT 10000")
+        
         students = []
         for row in rows:
             students.append({
@@ -84,8 +104,15 @@ def index():
                 'year': row.year
             })
 
+        # คำนวณเวลาที่ใช้
+        execution_time = (time.time() - start_time) * 1000 # แปลงเป็น ms
+        
         students.sort(key=lambda x: x['student_id'])
-        return render_template('index.html', students=students)
+        return render_template('index.html', 
+                             students=students, 
+                             limit_reached=len(students) >= 10000,
+                             execution_time=f"{execution_time:.2f}",
+                             search_query=search_query)
 
     except Exception as e:
         return f"Error: {e}"
@@ -167,5 +194,5 @@ if __name__ == '__main__':
         print("กำลังเริ่มต้น Student Management System...")
         init_database()
         
-    print("เปิดเว็บที่: http://localhost:5000")
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    print("เปิดเว็บที่: http://localhost:5001")
+    app.run(debug=True, host='0.0.0.0', port=5001)
